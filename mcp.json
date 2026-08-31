@@ -1,0 +1,15 @@
+{
+  "mcpServers": {
+    "gitlab": {
+      "command": "uvx",
+      "args": ["--from", "fastmcp", "fastmcp", "run", "/PATH/TO/kiro-power-gitlab-cross-project/server/gitlab_cross_project_mcp.py"],
+      "env": {
+        "GITLAB_SOURCE_PROJECT": "${env:GITLAB_SOURCE_PROJECT}",
+        "GITLAB_TARGET_PROJECT": "${env:GITLAB_TARGET_PROJECT}",
+        "GITLAB_SOURCE_ID": "${env:GITLAB_SOURCE_ID}",
+        "GITLAB_TARGET_ID": "${env:GITLAB_TARGET_ID}",
+        "GITLAB_DEFAULT_LABELS": "${env:GITLAB_DEFAULT_LABELS}"
+      }
+    }
+  }
+}
