@@ -1,0 +1,25 @@
+[project]
+name = "gitlab-cross-project-mcp"
+version = "0.1.0"
+description = "GitLab cross-project merge-request MCP server (wraps the glab CLI)."
+requires-python = ">=3.11"
+dependencies = [
+    "fastmcp",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest",
+    "pytest-cov",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["server/tests"]
+addopts = "-q"
+
+[tool.coverage.run]
+source = ["server"]
+omit = ["server/tests/*"]
+
+[tool.coverage.report]
+show_missing = true
