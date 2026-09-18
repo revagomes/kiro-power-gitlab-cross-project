@@ -159,11 +159,16 @@ def gitlab_list_mrs(
         limit: Maximum number of results. Defaults to 20.
     """
     endpoint = f"projects/{_encode_project(TARGET_PROJECT)}/merge_requests"
-    params = [f"state={state}", f"per_page={limit}"]
+    params = [
+        f"state={urllib.parse.quote(state, safe='')}",
+        f"per_page={limit}",
+    ]
     if branch:
         params.append(f"source_branch={urllib.parse.quote(branch, safe='')}")
     if author:
-        params.append(f"author_username={author}")
+        params.append(
+            f"author_username={urllib.parse.quote(author, safe='')}"
+        )
     if labels:
         params.append(f"labels={urllib.parse.quote(labels, safe='')}")
 
