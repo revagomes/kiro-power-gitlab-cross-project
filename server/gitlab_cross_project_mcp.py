@@ -28,6 +28,7 @@ Run via:
 
 import json
 import os
+import re
 import subprocess
 import urllib.parse
 
@@ -37,9 +38,24 @@ from fastmcp import FastMCP
 
 SOURCE_PROJECT = os.environ.get("GITLAB_SOURCE_PROJECT", "your-group/source-project")
 TARGET_PROJECT = os.environ.get("GITLAB_TARGET_PROJECT", "your-group/target-project")
-SOURCE_ID = os.environ.get("GITLAB_SOURCE_ID", "1001")
-TARGET_ID = os.environ.get("GITLAB_TARGET_ID", "2002")
+
+
+def _numeric_env(name: str, default: str) -> str:
+    """Read a numeric project-ID env var, failing fast on non-numeric values."""
+    value = os.environ.get(name, default)
+    if not str(value).isdigit():
+        raise ValueError(
+            f"{name} must be a numeric project ID, got {value!r}."
+        )
+    return str(value)
+
+
+SOURCE_ID = _numeric_env("GITLAB_SOURCE_ID", "1001")
+TARGET_ID = _numeric_env("GITLAB_TARGET_ID", "2002")
 DEFAULT_LABELS = os.environ.get("GITLAB_DEFAULT_LABELS", "ai::review")
+
+# GitLab's draft-title markers (see GitLab MR draft detection).
+_DRAFT_MARKER = re.compile(r"^\s*(\[draft\]|\(draft\)|draft:|\[wip\]|wip:)", re.IGNORECASE)
 
 mcp = FastMCP(
     "GitLab Cross-Project",
@@ -64,17 +80,37 @@ def _glab_api(
     for key, value in (fields or {}).items():
         cmd.extend(["-f", f"{key}={value}"])
 
-    result = subprocess.run(
-        cmd,
-        capture_output=True,
-        text=True,
-        timeout=30,
-    )
+    try:
+        result = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+    except FileNotFoundError as exc:
+        raise RuntimeError(
+            "glab CLI not found on PATH. Install glab and run 'glab auth login'."
+        ) from exc
+    except subprocess.TimeoutExpired as exc:
+        raise RuntimeError(
+            f"glab api timed out after 30s for {endpoint!r}."
+        ) from exc
+
     if result.returncode != 0:
         stderr = result.stderr.strip()
         raise RuntimeError(f"glab api failed (exit {result.returncode}): {stderr}")
 
-    return json.loads(result.stdout)
+    stdout = result.stdout.strip()
+    if not stdout:
+        raise RuntimeError(
+            f"glab api returned an empty response for {endpoint!r}."
+        )
+    try:
+        return json.loads(stdout)
+    except json.JSONDecodeError as exc:
+        raise RuntimeError(
+            f"glab api returned non-JSON output for {endpoint!r}: {stdout[:200]!r}"
+        ) from exc
 
 
 def _encode_project(project_path: str) -> str:
@@ -91,7 +127,7 @@ def _format_mr(mr: dict) -> dict:
         "url": mr.get("web_url"),
         "source_branch": mr.get("source_branch"),
         "target_branch": mr.get("target_branch"),
-        "author": mr.get("author", {}).get("username"),
+        "author": (mr.get("author") or {}).get("username"),
         "created_at": mr.get("created_at"),
         "updated_at": mr.get("updated_at"),
         "merge_status": mr.get("merge_status"),
@@ -123,7 +159,7 @@ def gitlab_create_cross_mr(
         draft: If True, creates the MR as a draft/WIP.
     """
     effective_labels = labels if labels else DEFAULT_LABELS
-    if draft and not title.startswith("Draft:"):
+    if draft and not _DRAFT_MARKER.match(title):
         title = f"Draft: {title}"
 
     endpoint = f"projects/{_encode_project(SOURCE_PROJECT)}/merge_requests"
@@ -159,9 +195,10 @@ def gitlab_list_mrs(
         limit: Maximum number of results. Defaults to 20.
     """
     endpoint = f"projects/{_encode_project(TARGET_PROJECT)}/merge_requests"
+    per_page = max(1, min(int(limit), 100))
     params = [
         f"state={urllib.parse.quote(state, safe='')}",
-        f"per_page={limit}",
+        f"per_page={per_page}",
     ]
     if branch:
         params.append(f"source_branch={urllib.parse.quote(branch, safe='')}")
@@ -212,7 +249,7 @@ def gitlab_mr_status(mr_iid: int) -> dict:
             a.get("user", {}).get("username")
             for a in approvals.get("approved_by", [])
         ]
-    except RuntimeError:
+    except (RuntimeError, json.JSONDecodeError):
         result["approved"] = None
         result["approvals_note"] = "Approvals API not available"
 
@@ -264,7 +301,7 @@ def gitlab_mr_add_comment(mr_iid: int, body: str) -> dict:
 
     return {
         "id": data.get("id"),
-        "author": data.get("author", {}).get("username"),
+        "author": (data.get("author") or {}).get("username"),
         "body": data.get("body", "")[:200],
         "created_at": data.get("created_at"),
     }
