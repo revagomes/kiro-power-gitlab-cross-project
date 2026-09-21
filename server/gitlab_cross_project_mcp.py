@@ -15,11 +15,12 @@ primarily cross-project merge request management.
 Uses `glab api` as the transport layer — inherits authentication from
 the user's existing glab configuration. No separate tokens needed.
 
-Configuration via environment variables:
-    GITLAB_SOURCE_PROJECT  — Source project path (default: your-group/source-project)
-    GITLAB_TARGET_PROJECT  — Target project path (default: your-group/target-project)
-    GITLAB_SOURCE_ID       — Source project numeric ID (default: 1001)
-    GITLAB_TARGET_ID       — Target project numeric ID (default: 2002)
+Configuration via environment variables (all project settings are required;
+the server ships no default project references):
+    GITLAB_SOURCE_PROJECT  — Source project path, e.g. your-group/source-project (required)
+    GITLAB_TARGET_PROJECT  — Target project path, e.g. your-group/target-project (required)
+    GITLAB_SOURCE_ID       — Source project numeric ID (required)
+    GITLAB_TARGET_ID       — Target project numeric ID (required)
     GITLAB_DEFAULT_LABELS  — Comma-separated default MR labels (default: ai::review)
 
 Run via:
@@ -36,22 +37,32 @@ from fastmcp import FastMCP
 
 # ── Configuration ──────────────────────────────────────────────────────────────
 
-SOURCE_PROJECT = os.environ.get("GITLAB_SOURCE_PROJECT", "your-group/source-project")
-TARGET_PROJECT = os.environ.get("GITLAB_TARGET_PROJECT", "your-group/target-project")
+
+def _required_env(name: str) -> str:
+    """Read a required env var, failing fast with a clear message if unset."""
+    value = os.environ.get(name)
+    if not value:
+        raise ValueError(
+            f"{name} is required. Set it in your mcp.json env block "
+            f"(this server ships no default project references)."
+        )
+    return value
 
 
-def _numeric_env(name: str, default: str) -> str:
-    """Read a numeric project-ID env var, failing fast on non-numeric values."""
-    value = os.environ.get(name, default)
-    if not str(value).isdigit():
+def _required_numeric_env(name: str) -> str:
+    """Read a required numeric project-ID env var, failing fast if invalid."""
+    value = _required_env(name)
+    if not value.isdigit():
         raise ValueError(
             f"{name} must be a numeric project ID, got {value!r}."
         )
-    return str(value)
+    return value
 
 
-SOURCE_ID = _numeric_env("GITLAB_SOURCE_ID", "1001")
-TARGET_ID = _numeric_env("GITLAB_TARGET_ID", "2002")
+SOURCE_PROJECT = _required_env("GITLAB_SOURCE_PROJECT")
+TARGET_PROJECT = _required_env("GITLAB_TARGET_PROJECT")
+SOURCE_ID = _required_numeric_env("GITLAB_SOURCE_ID")
+TARGET_ID = _required_numeric_env("GITLAB_TARGET_ID")
 DEFAULT_LABELS = os.environ.get("GITLAB_DEFAULT_LABELS", "ai::review")
 
 # GitLab's draft-title markers (see GitLab MR draft detection).
@@ -151,7 +162,7 @@ def gitlab_create_cross_mr(
     """Create a cross-project merge request from the dev fork to the upstream reference repo.
 
     Args:
-        branch: Source branch name (e.g. feature/PROJ-3882-cache-fix).
+        branch: Source branch name (e.g. feature/PROJ-123-cache-fix).
         title: MR title. Keep under 70 chars. Use description for details.
         description: MR description in Markdown. Supports GitLab flavored markdown.
         target_branch: Target branch on the upstream repo. Defaults to 'master'.

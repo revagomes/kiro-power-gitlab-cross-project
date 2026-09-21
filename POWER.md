@@ -36,13 +36,19 @@ All configuration is via environment variables with sensible defaults:
 
 | Variable | Required | Default | Notes |
 |----------|----------|---------|-------|
-| `GITLAB_SOURCE_PROJECT` | No | `your-group/source-project` | Source project path (the fork) |
-| `GITLAB_TARGET_PROJECT` | No | `your-group/target-project` | Target project path (upstream) |
-| `GITLAB_SOURCE_ID` | No | `1001` | Source project numeric ID |
-| `GITLAB_TARGET_ID` | No | `2002` | Target project numeric ID |
+| `GITLAB_SOURCE_PROJECT` | **Yes** | _(none)_ | Source project path (the fork), e.g. `your-group/source-project` |
+| `GITLAB_TARGET_PROJECT` | **Yes** | _(none)_ | Target project path (upstream), e.g. `your-group/target-project` |
+| `GITLAB_SOURCE_ID` | **Yes** | _(none)_ | Source project numeric ID |
+| `GITLAB_TARGET_ID` | **Yes** | _(none)_ | Target project numeric ID |
 | `GITLAB_DEFAULT_LABELS` | No | `ai::review` | Default labels for new MRs |
 
-Override these in your `mcp.json` `env` block to use with different GitLab projects.
+Set these in your `mcp.json` `env` block. The server ships no default project references and will fail fast at startup if a required variable is missing.
+
+### Finding your project IDs
+
+```bash
+glab api "projects/your-group%2Fyour-project" | jq '.id'
+```
 
 ## Available MCP Tools
 
@@ -67,7 +73,7 @@ This power activates when you mention:
 ### Create a cross-project MR
 
 User: "Create an MR for the cache fix branch"
-→ Call `gitlab_create_cross_mr(branch="feature/PROJ-3882-cache-fix", title="PROJ-3882: Fix cache invalidation.")`
+→ Call `gitlab_create_cross_mr(branch="feature/PROJ-123-cache-fix", title="PROJ-123: Fix cache invalidation.")`
 
 ### Check MR status
 
