@@ -160,14 +160,24 @@ def test_merge_mr_includes_pipeline_flag(gl, monkeypatch):
 
 # ── C6: numeric env validation ───────────────────────────────────────────────
 
-def test_numeric_env_rejects_non_numeric(gl):
+def test_required_numeric_env_rejects_non_numeric(gl, monkeypatch):
+    monkeypatch.setenv("GITLAB_TARGET_ID", "not-a-number")
     with pytest.raises(ValueError) as exc:
-        gl._numeric_env("GITLAB_TARGET_ID", "not-a-number")
+        gl._required_numeric_env("GITLAB_TARGET_ID")
     assert "GITLAB_TARGET_ID" in str(exc.value)
 
 
-def test_numeric_env_accepts_numeric_default(gl):
-    assert gl._numeric_env("GITLAB_TARGET_ID", "1234") == "1234"
+def test_required_numeric_env_accepts_numeric(gl, monkeypatch):
+    monkeypatch.setenv("GITLAB_TARGET_ID", "1234")
+    assert gl._required_numeric_env("GITLAB_TARGET_ID") == "1234"
+
+
+def test_required_env_rejects_unset(gl, monkeypatch):
+    monkeypatch.delenv("GITLAB_SOURCE_PROJECT", raising=False)
+    with pytest.raises(ValueError) as exc:
+        gl._required_env("GITLAB_SOURCE_PROJECT")
+    assert "GITLAB_SOURCE_PROJECT" in str(exc.value)
+    assert "required" in str(exc.value).lower()
 
 
 # ── approvals happy path ─────────────────────────────────────────────────────
