@@ -17,6 +17,7 @@ This Power provides GitLab merge request management for cross-project (fork → 
 - **Cross-project MR creation** — Create MRs from a dev fork to the upstream reference repo in one call
 - **MR listing** — List open/closed/merged MRs on the upstream repo with filters
 - **MR status** — Get detailed MR metadata including pipeline, approvals, conflicts, and merge readiness
+- **MR updating** — Edit an existing MR's title, description, labels, target branch, or draft state in place
 - **MR merging** — Merge an MR with squash, pipeline-gating, and branch cleanup options
 - **MR commenting** — Add notes/comments to MRs
 
@@ -57,6 +58,7 @@ glab api "projects/your-group%2Fyour-project" | jq '.id'
 | `gitlab_create_cross_mr` | Create a cross-project MR from fork to upstream |
 | `gitlab_list_mrs` | List MRs on the upstream repo (filter by state, branch, author, labels) |
 | `gitlab_mr_status` | Get detailed MR status (pipeline, approvals, conflicts, merge readiness) |
+| `gitlab_update_mr` | Update an existing MR's title, description, labels, target branch, or draft state |
 | `gitlab_merge_mr` | Merge an MR (with squash, pipeline gating, branch cleanup) |
 | `gitlab_mr_add_comment` | Add a comment/note to an MR |
 
@@ -84,6 +86,11 @@ User: "What's the status of MR 720?"
 
 User: "Show me open MRs"
 → Call `gitlab_list_mrs(state="opened")` and present the list.
+
+### Update an MR's description or labels
+
+User: "Add the follow-up notes to MR 720's description" / "Relabel MR 720 as reviewed"
+→ Call `gitlab_update_mr(mr_iid=720, description="…updated body…")` or `gitlab_update_mr(mr_iid=720, labels="ai::reviewed")`. Only the fields you pass change; labels replace the full set, so pass the complete list.
 
 ### Merge an MR
 
