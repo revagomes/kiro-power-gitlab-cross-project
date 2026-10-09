@@ -139,6 +139,89 @@ def test_add_comment_posts_body(gl, monkeypatch):
     assert "body=hello" in joined
 
 
+# ── gitlab_update_mr ─────────────────────────────────────────────────────────
+
+def test_update_mr_builds_put_with_changed_fields(gl, monkeypatch):
+    fake = _fake_run(MR_JSON)
+    monkeypatch.setattr(subprocess, "run", fake)
+
+    result = gl.gitlab_update_mr(720, description="new body", labels="ai::reviewed")
+
+    cmd = fake.calls[-1]
+    joined = " ".join(cmd)
+    assert "--method" in cmd and "PUT" in cmd
+    assert "/merge_requests/720" in joined
+    assert "description=new body" in joined
+    assert "labels=ai::reviewed" in joined
+    # targets the upstream (TARGET) project
+    assert gl._encode_project(gl.TARGET_PROJECT) in joined
+    assert result["iid"] == 720
+
+
+def test_update_mr_only_sends_provided_fields(gl, monkeypatch):
+    fake = _fake_run(MR_JSON)
+    monkeypatch.setattr(subprocess, "run", fake)
+    gl.gitlab_update_mr(720, title="New title")
+    joined = " ".join(fake.calls[-1])
+    assert "title=New title" in joined
+    # description/labels/target_branch not touched
+    assert "description=" not in joined
+    assert "labels=" not in joined
+    assert "target_branch=" not in joined
+
+
+def test_update_mr_requires_a_field(gl, monkeypatch):
+    fake = _fake_run(MR_JSON)
+    monkeypatch.setattr(subprocess, "run", fake)
+    with pytest.raises(ValueError) as exc:
+        gl.gitlab_update_mr(720)
+    assert "at least one field" in str(exc.value)
+    # no glab call made
+    assert fake.calls == []
+
+
+def test_update_mr_draft_true_prefixes_given_title(gl, monkeypatch):
+    fake = _fake_run(MR_JSON)
+    monkeypatch.setattr(subprocess, "run", fake)
+    gl.gitlab_update_mr(720, title="Add x", draft=True)
+    joined = " ".join(fake.calls[-1])
+    assert "title=Draft: Add x" in joined
+
+
+def test_update_mr_draft_false_strips_marker(gl, monkeypatch):
+    fake = _fake_run(MR_JSON)
+    monkeypatch.setattr(subprocess, "run", fake)
+    gl.gitlab_update_mr(720, title="Draft: Add x", draft=False)
+    joined = " ".join(fake.calls[-1])
+    assert "title=Add x" in joined
+    assert "Draft:" not in joined
+
+
+def test_update_mr_draft_without_title_fetches_current(gl, monkeypatch):
+    """draft toggle with no title given fetches the current MR title first."""
+    calls = []
+
+    def run(cmd, capture_output=True, text=True, timeout=None):
+        calls.append(cmd)
+        endpoint = cmd[2] if len(cmd) > 2 else ""
+        method = cmd[cmd.index("--method") + 1] if "--method" in cmd else "GET"
+        # The GET to fetch current title returns an un-drafted title.
+        if method == "GET":
+            return SimpleNamespace(
+                returncode=0,
+                stdout=json.dumps({**json.loads(MR_JSON), "title": "Add x"}),
+                stderr="",
+            )
+        return SimpleNamespace(returncode=0, stdout=MR_JSON, stderr="")
+
+    monkeypatch.setattr(subprocess, "run", run)
+    gl.gitlab_update_mr(720, draft=True)
+    # Last call is the PUT carrying the drafted title.
+    joined = " ".join(calls[-1])
+    assert "--method" in calls[-1] and "PUT" in calls[-1]
+    assert "title=Draft: Add x" in joined
+
+
 # ── gitlab_merge_mr ──────────────────────────────────────────────────────────
 
 def test_merge_mr_builds_put_with_flags(gl, monkeypatch):
