@@ -325,26 +325,40 @@ def gitlab_update_mr(
             Optional.
         target_branch: New target branch. Optional.
         draft: If True, mark the MR as draft; if False, unmark it; if omitted,
-            leave the draft state unchanged.
+            leave the draft state unchanged. Toggling draft needs a usable
+            title: if none is supplied the current MR title is fetched, and a
+            title that is empty or only a draft marker raises ValueError.
     """
     fields: dict = {}
 
     # Resolve the title together with the draft flag so the Draft: marker stays
     # consistent with GitLab's own draft detection.
-    effective_title = title
+    effective_title = title.strip()
     if draft is not None:
-        # Need a title to carry the marker; fetch the current one if not given.
+        base = _DRAFT_MARKER.sub("", effective_title).strip()
         if not effective_title:
+            # No title supplied: fetch the current MR title to carry the marker.
             current = _glab_api(
                 f"projects/{_encode_project(TARGET_PROJECT)}"
                 f"/merge_requests/{mr_iid}"
             )
-            effective_title = current.get("title", "")
-        has_marker = bool(_DRAFT_MARKER.match(effective_title))
-        if draft and not has_marker:
-            effective_title = f"Draft: {effective_title}"
-        elif not draft and has_marker:
-            effective_title = _DRAFT_MARKER.sub("", effective_title).strip()
+            fetched = (
+                (current.get("title") or "").strip()
+                if isinstance(current, dict)
+                else ""
+            )
+            base = _DRAFT_MARKER.sub("", fetched).strip()
+
+        if not base:
+            # Either a supplied title was only a marker, or the fetched title
+            # was empty/marker-only. Fail loudly rather than silently writing an
+            # empty or "Draft: " title.
+            raise ValueError(
+                f"Cannot toggle draft on MR {mr_iid}: no usable title "
+                "(empty or draft-marker only). Pass an explicit 'title'."
+            )
+
+        effective_title = f"Draft: {base}" if draft else base
 
     if effective_title:
         fields["title"] = effective_title
