@@ -222,6 +222,53 @@ def test_update_mr_draft_without_title_fetches_current(gl, monkeypatch):
     assert "title=Draft: Add x" in joined
 
 
+def test_update_mr_undraft_marker_only_title_raises(gl, monkeypatch):
+    """Un-drafting a title that is only a marker must fail loudly, not no-op.
+
+    Previously this collapsed to an empty title, the field was dropped, and the
+    un-draft silently did nothing (or raised the generic 'requires a field').
+    """
+    fake = _fake_run(MR_JSON)
+    monkeypatch.setattr(subprocess, "run", fake)
+    with pytest.raises(ValueError) as exc:
+        gl.gitlab_update_mr(720, title="Draft:", draft=False)
+    assert "usable title" in str(exc.value)
+    # No PUT should have been issued.
+    assert fake.calls == []
+
+
+def test_update_mr_draft_alone_fetches_and_toggles(gl, monkeypatch):
+    """Passing draft alone (no other field) must update the MR, not error."""
+    calls = []
+
+    def run(cmd, capture_output=True, text=True, timeout=None):
+        calls.append(cmd)
+        method = cmd[cmd.index("--method") + 1] if "--method" in cmd else "GET"
+        if method == "GET":
+            return SimpleNamespace(
+                returncode=0,
+                stdout=json.dumps({**json.loads(MR_JSON), "title": "Draft: Add x"}),
+                stderr="",
+            )
+        return SimpleNamespace(returncode=0, stdout=MR_JSON, stderr="")
+
+    monkeypatch.setattr(subprocess, "run", run)
+    gl.gitlab_update_mr(720, draft=False)
+    joined = " ".join(calls[-1])
+    assert "--method" in calls[-1] and "PUT" in calls[-1]
+    assert "title=Add x" in joined
+    assert "Draft:" not in joined
+
+
+def test_update_mr_sends_target_branch(gl, monkeypatch):
+    fake = _fake_run(MR_JSON)
+    monkeypatch.setattr(subprocess, "run", fake)
+    gl.gitlab_update_mr(720, target_branch="release/2.0")
+    joined = " ".join(fake.calls[-1])
+    assert "--method" in fake.calls[-1] and "PUT" in fake.calls[-1]
+    assert "target_branch=release/2.0" in joined
+
+
 # ── gitlab_merge_mr ──────────────────────────────────────────────────────────
 
 def test_merge_mr_builds_put_with_flags(gl, monkeypatch):
