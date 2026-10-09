@@ -297,6 +297,78 @@ def gitlab_merge_mr(
 
 
 @mcp.tool()
+def gitlab_update_mr(
+    mr_iid: int,
+    title: str = "",
+    description: str = "",
+    labels: str = "",
+    target_branch: str = "",
+    draft: bool | None = None,
+) -> dict:
+    """Update an existing merge request on the upstream reference repo.
+
+    Edits MR metadata in place — the title, description/body, labels, target
+    branch, or draft state. Only the fields you pass are changed; omitted fields
+    are left untouched. At least one changeable field must be provided.
+
+    Note on labels: GitLab replaces the full label set with the value given, so
+    pass the complete comma-separated list you want the MR to end up with (not
+    just the additions).
+
+    Args:
+        mr_iid: The MR IID (the number shown in the UI, e.g. 720).
+        title: New MR title. Optional. If 'draft' is also set, the Draft:
+            prefix is applied/removed on this title.
+        description: New MR description in Markdown (GitLab flavored). Optional.
+            Supports multi-line content.
+        labels: Comma-separated labels to SET on the MR (replaces existing).
+            Optional.
+        target_branch: New target branch. Optional.
+        draft: If True, mark the MR as draft; if False, unmark it; if omitted,
+            leave the draft state unchanged.
+    """
+    fields: dict = {}
+
+    # Resolve the title together with the draft flag so the Draft: marker stays
+    # consistent with GitLab's own draft detection.
+    effective_title = title
+    if draft is not None:
+        # Need a title to carry the marker; fetch the current one if not given.
+        if not effective_title:
+            current = _glab_api(
+                f"projects/{_encode_project(TARGET_PROJECT)}"
+                f"/merge_requests/{mr_iid}"
+            )
+            effective_title = current.get("title", "")
+        has_marker = bool(_DRAFT_MARKER.match(effective_title))
+        if draft and not has_marker:
+            effective_title = f"Draft: {effective_title}"
+        elif not draft and has_marker:
+            effective_title = _DRAFT_MARKER.sub("", effective_title).strip()
+
+    if effective_title:
+        fields["title"] = effective_title
+    if description:
+        fields["description"] = description
+    if labels:
+        fields["labels"] = labels
+    if target_branch:
+        fields["target_branch"] = target_branch
+
+    if not fields:
+        raise ValueError(
+            "gitlab_update_mr requires at least one field to change "
+            "(title, description, labels, target_branch, or draft)."
+        )
+
+    endpoint = (
+        f"projects/{_encode_project(TARGET_PROJECT)}/merge_requests/{mr_iid}"
+    )
+    data = _glab_api(endpoint, method="PUT", fields=fields)
+    return _format_mr(data)
+
+
+@mcp.tool()
 def gitlab_mr_add_comment(mr_iid: int, body: str) -> dict:
     """Add a comment/note to a merge request on the upstream reference repo.
 
